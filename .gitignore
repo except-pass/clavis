@@ -1,0 +1,16 @@
+.env
+*.key
+*.tmp
+*.lock
+*~
+.*.swp
+
+# Local secrets / sensitive artifacts
+*.kdbx
+*.kdbx.bak
+SECRETS_AUDIT.md
+
+# Local build artifacts
+/clavis
+coverage.out
+.mcp.json
