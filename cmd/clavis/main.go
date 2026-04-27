@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/spf13/cobra"
 )
 
-var version = "2.0.0-dev"
+var version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "clavis",
@@ -34,6 +35,11 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			version = v
+		}
+	}
 	rootCmd.AddCommand(versionCmd)
 }
 

@@ -115,3 +115,24 @@ clavis manual          # full manual + workflow patterns
   vault.age       # encrypted vault
   identity.txt    # age private key (NEVER share)
 ```
+
+## Releasing
+
+Versions are git tags. Go's module system reads them directly, and
+`clavis version` reports the tag the binary was built from (via
+`runtime/debug.ReadBuildInfo`).
+
+To cut a release:
+
+```bash
+git commit -m "release: v1.2.3 — <one-liner>"
+git tag v1.2.3
+git push && git push --tags
+```
+
+Users then get the new version with:
+
+```bash
+go install github.com/except-pass/clavis@v1.2.3   # pinned
+go install github.com/except-pass/clavis@latest   # latest tag
+```
