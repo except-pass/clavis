@@ -215,6 +215,11 @@ func (v *Vault) Remove(name string) bool {
 	for i, s := range v.Secrets {
 		if s.Name == name {
 			v.Secrets = append(v.Secrets[:i], v.Secrets[i+1:]...)
+			// Removing the last locked secret would orphan the shared lock
+			// password; keep IsLocked() consistent with AnyLocked().
+			if !v.AnyLocked() {
+				v.LockHash = ""
+			}
 			return true
 		}
 	}

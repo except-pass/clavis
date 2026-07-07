@@ -71,6 +71,13 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
+		// Don't search or reveal the values of a locked secret; that would
+		// bypass the read gate that get/show enforce. Names and tags stay
+		// searchable (they are already visible via list).
+		if s.Locked {
+			continue
+		}
+
 		// Search values
 		for key, val := range s.Values {
 			valLower := strings.ToLower(val)

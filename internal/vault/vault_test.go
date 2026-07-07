@@ -2,11 +2,13 @@ package vault
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/except-pass/clavis/internal/secret"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestGenerateIdentity(t *testing.T) {
@@ -410,5 +412,83 @@ func TestMigrateToV3ClearsOrphanHash(t *testing.T) {
 	}
 	if v.AnyLocked() {
 		t.Error("expected nothing locked")
+	}
+}
+
+func TestVaultRemoveClearsOrphanLock(t *testing.T) {
+	// Removing the last locked secret must clear the shared password so the
+	// vault does not get stuck reporting IsLocked() with nothing to unlock.
+	v := vaultWithSecrets("a", "b")
+	if err := v.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("LockSecret failed: %v", err)
+	}
+
+	// Removing an unlocked secret leaves the lock in place.
+	v.Remove("b")
+	if !v.IsLocked() {
+		t.Error("expected vault to stay locked while a is still locked")
+	}
+
+	// Removing the last locked secret clears the orphan password.
+	v.Remove("a")
+	if v.IsLocked() {
+		t.Error("expected shared password to clear after removing the last locked secret")
+	}
+	if v.AnyLocked() {
+		t.Error("expected nothing locked after removal")
+	}
+}
+
+func TestLoadMigratesV2VaultFromDisk(t *testing.T) {
+	// End-to-end: a real encrypted v2 vault on disk migrates to per-secret
+	// lock state on Load, and the recovered shared password still verifies.
+	_, identityPath, pubPath, vaultPath := setupTestVault(t)
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("hashing failed: %v", err)
+	}
+
+	legacy := fmt.Sprintf(`{
+		"version": 2,
+		"lock_hash": %q,
+		"secrets": [
+			{"name": "a", "tags": {}, "values": {"k": "v"}, "lockable": true},
+			{"name": "b", "tags": {}, "values": {"k": "v"}}
+		]
+	}`, string(hash))
+
+	ciphertext, err := Encrypt([]byte(legacy), pubPath)
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+	if err := os.WriteFile(vaultPath, ciphertext, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	loaded, err := Load(vaultPath, identityPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if loaded.Version != 3 {
+		t.Errorf("Version = %d, want 3", loaded.Version)
+	}
+	if a, _ := loaded.Get("a"); !a.Locked {
+		t.Error("expected lockable secret a to be locked after migration")
+	}
+	if b, _ := loaded.Get("b"); b.Locked {
+		t.Error("expected non-lockable secret b to stay unlocked")
+	}
+	if !loaded.IsLocked() {
+		t.Error("expected migrated vault to report locked")
+	}
+
+	// The migrated shared password must still verify end-to-end.
+	if err := loaded.UnlockSecret("a", "pw"); err != nil {
+		t.Errorf("expected recovered password to verify, got: %v", err)
+	}
+	if loaded.IsLocked() {
+		t.Error("expected password cleared after unlocking the last secret")
 	}
 }

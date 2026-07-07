@@ -70,7 +70,27 @@ echo "bulk tag lock works, non-matching secret untouched"
 ./clavis get lock/a.secret >/dev/null
 echo "unlock --all works"
 
+# A locked secret must not leak through other read paths.
+./clavis lock lock/a --password testpw
+if ./clavis search --reveal aaa | grep -q aaa; then
+    echo "FAIL: search --reveal exposed a locked secret value"
+    exit 1
+fi
+echo "search --reveal does not expose locked values"
+if ./clavis edit lock/a >/dev/null 2>&1; then
+    echo "FAIL: edit opened a locked secret"
+    exit 1
+fi
+echo "edit refuses a locked secret"
+
+# Removing the last locked secret must not orphan the shared password:
+# a fresh lock afterward should set a brand-new password.
 ./clavis rm lock/a
+./clavis lock lock/b --password brandnewpw
+./clavis get lock/b.secret >/dev/null 2>&1 && { echo "FAIL: lock/b readable while locked"; exit 1; }
+./clavis unlock lock/b --password brandnewpw
+echo "rm of last locked secret does not orphan the lock password"
+
 ./clavis rm lock/b
 
 echo "=== Remove ==="
