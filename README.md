@@ -82,23 +82,33 @@ If you’re instructing an AI coding agent, this works well:
 
 You can also keep usage notes inside the secret itself (for example `notes`, `usage`, `owner`, `rotation_policy`) so agents read the operational context alongside credentials.
 
-## Lockable Secrets (Human-in-the-loop protection)
+## Locking Secrets (Human-in-the-loop protection)
 
-Clavis supports per-secret lockability and vault lock/unlock flow:
+Clavis locks secrets individually. Lock a few sensitive credentials, hand the vault to
+an agent, and it can still use everything else:
 
 ```bash
-# Mark a secret as lockable (toggle)
-clavis lockable prod/high-risk/mysql
+# Lock a single secret (sets a shared password on the first lock)
+clavis lock prod/high-risk/mysql
 
-# Lock lockable secrets
-clavis lock
+# Lock in bulk
+clavis lock --all
+clavis lock --tag env:prod
 
-# Unlock requires human password
-clavis unlock
+# Unlock (requires the shared lock password)
+clavis unlock prod/high-risk/mysql
+clavis unlock --all
 ```
 
-When locked, lockable secrets cannot be retrieved by `get`/`show` until unlocked.  
-This is useful when agents can use Clavis for routine secrets, while sensitive secrets remain human-gated.
+A locked secret cannot be retrieved by `get`/`show` until it is unlocked; other secrets
+stay accessible, and `clavis list` shows 🔒 next to locked ones. One shared password
+(set on the first lock, cleared when the last secret is unlocked) opens any locked
+secret. This is useful when agents can use Clavis for routine secrets while sensitive
+ones stay human-gated.
+
+> **Note:** the lock is a convenience guardrail, not extra encryption. Secret values are
+> protected by the vault's age encryption; the lock stops routine `get`/`show` access,
+> not someone who can already decrypt the vault.
 
 ## Documentation
 
