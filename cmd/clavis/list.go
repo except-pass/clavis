@@ -57,17 +57,11 @@ func runList(cmd *cobra.Command, args []string) error {
 		return secrets[i].Name < secrets[j].Name
 	})
 
-	isLocked := v.IsLocked()
-
 	for _, s := range secrets {
-		// Determine lock indicator for lockable secrets
+		// Show a padlock next to locked secrets
 		var lockIndicator string
-		if s.Lockable {
-			if isLocked {
-				lockIndicator = " \U0001F512" // locked padlock
-			} else {
-				lockIndicator = " \U0001F513" // unlocked padlock
-			}
+		if s.Locked {
+			lockIndicator = " \U0001F512" // locked padlock
 		}
 
 		if listVerbose {

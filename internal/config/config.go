@@ -11,7 +11,7 @@ const (
 	IdentityFile    = "identity.txt"
 	IdentityPubFile = "identity.txt.pub"
 	FormattersDir   = "formatters"
-	VaultVersion    = 2
+	VaultVersion    = 3
 )
 
 // SecretsDir returns the path to ~/.secrets

@@ -59,23 +59,23 @@ func TestSecretModifiedTimestamp(t *testing.T) {
 	}
 }
 
-func TestSecretLockableField(t *testing.T) {
+func TestSecretLockedField(t *testing.T) {
 	s := New("test")
 
 	// Default should be false
-	if s.Lockable {
-		t.Error("expected Lockable to default to false")
+	if s.Locked {
+		t.Error("expected Locked to default to false")
 	}
 
 	// Set to true
-	s.Lockable = true
-	if !s.Lockable {
-		t.Error("expected Lockable to be true after setting")
+	s.Locked = true
+	if !s.Locked {
+		t.Error("expected Locked to be true after setting")
 	}
 
 	// Toggle back to false
-	s.Lockable = false
-	if s.Lockable {
-		t.Error("expected Lockable to be false after unsetting")
+	s.Locked = false
+	if s.Locked {
+		t.Error("expected Locked to be false after unsetting")
 	}
 }

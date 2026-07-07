@@ -7,7 +7,7 @@ type Secret struct {
 	Name     string            `json:"name"`
 	Tags     map[string]string `json:"tags"`
 	Values   map[string]string `json:"values"`
-	Lockable bool              `json:"lockable,omitempty"`
+	Locked   bool              `json:"locked,omitempty"`
 	Created  time.Time         `json:"created"`
 	Modified time.Time         `json:"modified"`
 }
