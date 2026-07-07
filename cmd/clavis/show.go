@@ -47,7 +47,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if secret is locked
-	if v.IsLocked() && s.Lockable {
+	if s.Locked {
 		return fmt.Errorf("secret %q is locked", name)
 	}
 

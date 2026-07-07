@@ -36,6 +36,11 @@ func runEdit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("secret not found: %s", name)
 	}
 
+	// A locked secret must not be revealed to $EDITOR or mutated.
+	if s.Locked {
+		return fmt.Errorf("secret %q is locked", name)
+	}
+
 	// Create temp file with current values
 	tmpFile, err := os.CreateTemp("", "clavis-edit-*.txt")
 	if err != nil {

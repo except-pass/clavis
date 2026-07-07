@@ -1,11 +1,14 @@
 package vault
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/except-pass/clavis/internal/secret"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestGenerateIdentity(t *testing.T) {
@@ -86,8 +89,8 @@ func TestVaultCreateAndLoad(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	if loaded.Version != 2 {
-		t.Errorf("Version = %d, want 2", loaded.Version)
+	if loaded.Version != 3 {
+		t.Errorf("Version = %d, want 3", loaded.Version)
 	}
 	if len(loaded.Secrets) != 0 {
 		t.Errorf("Secrets length = %d, want 0", len(loaded.Secrets))
@@ -164,94 +167,149 @@ func TestVaultList(t *testing.T) {
 	}
 }
 
-func TestVaultIsLocked(t *testing.T) {
+// vaultWithSecrets returns a fresh vault holding the named secrets.
+func vaultWithSecrets(names ...string) *Vault {
 	v := New()
+	for _, n := range names {
+		v.Add(secret.New(n))
+	}
+	return v
+}
 
-	// Fresh vault should not be locked
+func TestVaultLockSecretIsolatesOthers(t *testing.T) {
+	v := vaultWithSecrets("a", "b")
+
 	if v.IsLocked() {
 		t.Error("expected fresh vault to not be locked")
 	}
 
-	// After locking, should be locked
-	if err := v.Lock("password123"); err != nil {
-		t.Fatalf("Lock failed: %v", err)
+	if err := v.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("LockSecret failed: %v", err)
 	}
 	if !v.IsLocked() {
-		t.Error("expected vault to be locked after Lock()")
+		t.Error("expected shared password to be set after first lock")
+	}
+
+	a, _ := v.Get("a")
+	b, _ := v.Get("b")
+	if !a.Locked {
+		t.Error("expected secret a to be locked")
+	}
+	if b.Locked {
+		t.Error("expected secret b to stay unlocked")
 	}
 }
 
-func TestVaultLockUnlock(t *testing.T) {
-	v := New()
+func TestVaultLockSecretSharedPassword(t *testing.T) {
+	v := vaultWithSecrets("a", "b")
 
-	// Lock sets hash
-	if err := v.Lock("mypassword"); err != nil {
-		t.Fatalf("Lock failed: %v", err)
-	}
-	if v.LockHash == "" {
-		t.Error("expected LockHash to be set after Lock()")
+	if err := v.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("first LockSecret failed: %v", err)
 	}
 
-	// Wrong password should fail
-	if err := v.Unlock("wrongpassword"); err == nil {
-		t.Error("expected Unlock with wrong password to fail")
+	// Same password locks a second secret.
+	if err := v.LockSecret("b", "pw"); err != nil {
+		t.Fatalf("second LockSecret with correct password failed: %v", err)
+	}
+
+	// A different password is rejected and leaves state unchanged.
+	v2 := vaultWithSecrets("a", "b")
+	if err := v2.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("setup lock failed: %v", err)
+	}
+	if err := v2.LockSecret("b", "different"); err == nil {
+		t.Error("expected LockSecret with wrong password to fail")
+	}
+	if b, _ := v2.Get("b"); b.Locked {
+		t.Error("expected b to remain unlocked after wrong password")
+	}
+}
+
+func TestVaultLockSecretErrors(t *testing.T) {
+	v := vaultWithSecrets("a")
+
+	if err := v.LockSecret("missing", "pw"); err == nil {
+		t.Error("expected LockSecret on unknown secret to fail")
+	}
+
+	if err := v.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("LockSecret failed: %v", err)
+	}
+	if err := v.LockSecret("a", "pw"); err == nil {
+		t.Error("expected LockSecret on already-locked secret to fail")
+	}
+}
+
+func TestVaultUnlockSecret(t *testing.T) {
+	v := vaultWithSecrets("a", "b")
+	if err := v.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("LockSecret a failed: %v", err)
+	}
+	if err := v.LockSecret("b", "pw"); err != nil {
+		t.Fatalf("LockSecret b failed: %v", err)
+	}
+
+	// Wrong password leaves state unchanged.
+	if err := v.UnlockSecret("a", "wrong"); err == nil {
+		t.Error("expected UnlockSecret with wrong password to fail")
+	}
+	if a, _ := v.Get("a"); !a.Locked {
+		t.Error("expected a to stay locked after wrong password")
+	}
+
+	// Unlocking one of several leaves the shared password in place.
+	if err := v.UnlockSecret("a", "pw"); err != nil {
+		t.Fatalf("UnlockSecret a failed: %v", err)
+	}
+	if a, _ := v.Get("a"); a.Locked {
+		t.Error("expected a to be unlocked")
 	}
 	if !v.IsLocked() {
-		t.Error("vault should still be locked after wrong password")
+		t.Error("expected shared password to persist while b is still locked")
 	}
 
-	// Correct password should unlock
-	if err := v.Unlock("mypassword"); err != nil {
-		t.Fatalf("Unlock failed: %v", err)
-	}
-	if v.LockHash != "" {
-		t.Error("expected LockHash to be cleared after Unlock()")
+	// Unlocking the last locked secret clears the shared password.
+	if err := v.UnlockSecret("b", "pw"); err != nil {
+		t.Fatalf("UnlockSecret b failed: %v", err)
 	}
 	if v.IsLocked() {
-		t.Error("vault should not be locked after Unlock()")
+		t.Error("expected shared password to clear after last unlock")
 	}
 }
 
-func TestVaultLockAlreadyLocked(t *testing.T) {
-	v := New()
+func TestVaultUnlockSecretErrors(t *testing.T) {
+	v := vaultWithSecrets("a")
 
-	if err := v.Lock("password1"); err != nil {
-		t.Fatalf("first Lock failed: %v", err)
+	// Vault not locked at all.
+	if err := v.UnlockSecret("a", "pw"); err == nil {
+		t.Error("expected UnlockSecret on unlocked vault to fail")
 	}
 
-	// Second lock should fail
-	if err := v.Lock("password2"); err == nil {
-		t.Error("expected Lock on already locked vault to fail")
+	if err := v.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("LockSecret failed: %v", err)
 	}
-}
-
-func TestVaultUnlockWhenNotLocked(t *testing.T) {
-	v := New()
-
-	// Unlock on unlocked vault should fail
-	if err := v.Unlock("anypassword"); err == nil {
-		t.Error("expected Unlock on unlocked vault to fail")
+	if err := v.UnlockSecret("missing", "pw"); err == nil {
+		t.Error("expected UnlockSecret on unknown secret to fail")
+	}
+	// "a" is locked, but unlocking a never-locked sibling requires the sibling to exist.
+	v.Add(secret.New("b"))
+	if err := v.UnlockSecret("b", "pw"); err == nil {
+		t.Error("expected UnlockSecret on a not-locked secret to fail")
 	}
 }
 
 func TestVaultLockPersistence(t *testing.T) {
 	_, identityPath, pubPath, vaultPath := setupTestVault(t)
 
-	// Create vault, add lockable secret, lock it
-	v := New()
-	s := secret.New("prod/secret")
-	s.Lockable = true
-	v.Add(s)
-
-	if err := v.Lock("testpassword"); err != nil {
-		t.Fatalf("Lock failed: %v", err)
+	v := vaultWithSecrets("prod/secret", "prod/open")
+	if err := v.LockSecret("prod/secret", "testpassword"); err != nil {
+		t.Fatalf("LockSecret failed: %v", err)
 	}
 
 	if err := v.Save(vaultPath, pubPath); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	// Load it back and verify lock state persists
 	loaded, err := Load(vaultPath, identityPath)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
@@ -260,13 +318,177 @@ func TestVaultLockPersistence(t *testing.T) {
 	if !loaded.IsLocked() {
 		t.Error("expected loaded vault to be locked")
 	}
-
-	// Verify lockable field persists
-	loadedSecret, ok := loaded.Get("prod/secret")
+	locked, ok := loaded.Get("prod/secret")
 	if !ok {
 		t.Fatal("secret not found")
 	}
-	if !loadedSecret.Lockable {
-		t.Error("expected secret to still be marked as lockable")
+	if !locked.Locked {
+		t.Error("expected secret to still be locked after reload")
+	}
+	if open, _ := loaded.Get("prod/open"); open.Locked {
+		t.Error("expected sibling secret to stay unlocked after reload")
+	}
+}
+
+func TestMigrateToV3(t *testing.T) {
+	// A v2 vault with a lock password and two lockable secrets migrates so
+	// exactly those two are locked.
+	locked := []byte(`{
+		"version": 2,
+		"lock_hash": "$2a$10$abcdefghijklmnopqrstuv",
+		"secrets": [
+			{"name": "a", "lockable": true},
+			{"name": "b", "lockable": true},
+			{"name": "c", "lockable": false}
+		]
+	}`)
+	var v Vault
+	if err := json.Unmarshal(locked, &v); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if err := migrateToV3(locked, &v); err != nil {
+		t.Fatalf("migrateToV3 failed: %v", err)
+	}
+	if v.Version != 3 {
+		t.Errorf("Version = %d, want 3", v.Version)
+	}
+	if a, _ := v.Get("a"); !a.Locked {
+		t.Error("expected a to be locked after migration")
+	}
+	if b, _ := v.Get("b"); !b.Locked {
+		t.Error("expected b to be locked after migration")
+	}
+	if c, _ := v.Get("c"); c.Locked {
+		t.Error("expected non-lockable c to stay unlocked")
+	}
+	if !v.IsLocked() {
+		t.Error("expected lock hash to persist when secrets are locked")
+	}
+}
+
+func TestMigrateToV3NoPassword(t *testing.T) {
+	// A v2 vault with no lock password locks nothing, even if secrets were
+	// marked lockable.
+	unlocked := []byte(`{
+		"version": 2,
+		"secrets": [
+			{"name": "a", "lockable": true},
+			{"name": "b", "lockable": false}
+		]
+	}`)
+	var v Vault
+	if err := json.Unmarshal(unlocked, &v); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if err := migrateToV3(unlocked, &v); err != nil {
+		t.Fatalf("migrateToV3 failed: %v", err)
+	}
+	if v.AnyLocked() {
+		t.Error("expected nothing locked when vault had no password")
+	}
+	if v.IsLocked() {
+		t.Error("expected no lock hash")
+	}
+}
+
+func TestMigrateToV3ClearsOrphanHash(t *testing.T) {
+	// A v2 vault with a password but no lockable secrets clears the orphan hash.
+	orphan := []byte(`{
+		"version": 2,
+		"lock_hash": "$2a$10$abcdefghijklmnopqrstuv",
+		"secrets": [
+			{"name": "a", "lockable": false}
+		]
+	}`)
+	var v Vault
+	if err := json.Unmarshal(orphan, &v); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if err := migrateToV3(orphan, &v); err != nil {
+		t.Fatalf("migrateToV3 failed: %v", err)
+	}
+	if v.IsLocked() {
+		t.Error("expected orphan lock hash to be cleared")
+	}
+	if v.AnyLocked() {
+		t.Error("expected nothing locked")
+	}
+}
+
+func TestVaultRemoveClearsOrphanLock(t *testing.T) {
+	// Removing the last locked secret must clear the shared password so the
+	// vault does not get stuck reporting IsLocked() with nothing to unlock.
+	v := vaultWithSecrets("a", "b")
+	if err := v.LockSecret("a", "pw"); err != nil {
+		t.Fatalf("LockSecret failed: %v", err)
+	}
+
+	// Removing an unlocked secret leaves the lock in place.
+	v.Remove("b")
+	if !v.IsLocked() {
+		t.Error("expected vault to stay locked while a is still locked")
+	}
+
+	// Removing the last locked secret clears the orphan password.
+	v.Remove("a")
+	if v.IsLocked() {
+		t.Error("expected shared password to clear after removing the last locked secret")
+	}
+	if v.AnyLocked() {
+		t.Error("expected nothing locked after removal")
+	}
+}
+
+func TestLoadMigratesV2VaultFromDisk(t *testing.T) {
+	// End-to-end: a real encrypted v2 vault on disk migrates to per-secret
+	// lock state on Load, and the recovered shared password still verifies.
+	_, identityPath, pubPath, vaultPath := setupTestVault(t)
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("hashing failed: %v", err)
+	}
+
+	legacy := fmt.Sprintf(`{
+		"version": 2,
+		"lock_hash": %q,
+		"secrets": [
+			{"name": "a", "tags": {}, "values": {"k": "v"}, "lockable": true},
+			{"name": "b", "tags": {}, "values": {"k": "v"}}
+		]
+	}`, string(hash))
+
+	ciphertext, err := Encrypt([]byte(legacy), pubPath)
+	if err != nil {
+		t.Fatalf("Encrypt failed: %v", err)
+	}
+	if err := os.WriteFile(vaultPath, ciphertext, 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	loaded, err := Load(vaultPath, identityPath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if loaded.Version != 3 {
+		t.Errorf("Version = %d, want 3", loaded.Version)
+	}
+	if a, _ := loaded.Get("a"); !a.Locked {
+		t.Error("expected lockable secret a to be locked after migration")
+	}
+	if b, _ := loaded.Get("b"); b.Locked {
+		t.Error("expected non-lockable secret b to stay unlocked")
+	}
+	if !loaded.IsLocked() {
+		t.Error("expected migrated vault to report locked")
+	}
+
+	// The migrated shared password must still verify end-to-end.
+	if err := loaded.UnlockSecret("a", "pw"); err != nil {
+		t.Errorf("expected recovered password to verify, got: %v", err)
+	}
+	if loaded.IsLocked() {
+		t.Error("expected password cleared after unlocking the last secret")
 	}
 }
