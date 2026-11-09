@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/spf13/cobra"
-	"github.com/except-pass/clavis/internal/config"
 	"github.com/except-pass/clavis/internal/format"
-	"github.com/except-pass/clavis/internal/vault"
+	"github.com/spf13/cobra"
 )
 
 var getFormat string
@@ -38,6 +36,12 @@ func init() {
 }
 
 func runGet(cmd *cobra.Command, args []string) error {
+	// Resolve the reference and value against one local snapshot per read.
+	v, err := loadReadVault()
+	if err != nil {
+		return fmt.Errorf("loading vault: %w", err)
+	}
+
 	// Parse name and optional key
 	ref := args[0]
 	var name, key string
@@ -48,11 +52,6 @@ func runGet(cmd *cobra.Command, args []string) error {
 		possibleName := ref[:idx]
 
 		// Try with the dot as key separator first
-		v, err := vault.Load(config.VaultPath(), config.IdentityPath())
-		if err != nil {
-			return fmt.Errorf("loading vault: %w", err)
-		}
-
 		if s, ok := v.Get(possibleName); ok {
 			if _, hasKey := s.Get(possibleKey); hasKey {
 				name = possibleName
@@ -72,12 +71,6 @@ func runGet(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		name = ref
-	}
-
-	// Load vault
-	v, err := vault.Load(config.VaultPath(), config.IdentityPath())
-	if err != nil {
-		return fmt.Errorf("loading vault: %w", err)
 	}
 
 	s, ok := v.Get(name)

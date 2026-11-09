@@ -5,8 +5,6 @@ import (
 	"sort"
 
 	"github.com/spf13/cobra"
-	"github.com/except-pass/clavis/internal/config"
-	"github.com/except-pass/clavis/internal/vault"
 )
 
 var tagsCmd = &cobra.Command{
@@ -28,7 +26,7 @@ func init() {
 }
 
 func runTags(cmd *cobra.Command, args []string) error {
-	v, err := vault.Load(config.VaultPath(), config.IdentityPath())
+	v, err := loadReadVault()
 	if err != nil {
 		return fmt.Errorf("loading vault: %w", err)
 	}

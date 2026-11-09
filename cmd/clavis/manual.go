@@ -25,7 +25,7 @@ const manualText = `CLAVIS MANUAL
 =============
 
 Clavis is an encrypted secrets manager that stores secrets as tagged key-value
-bundles in a single age-encrypted vault file.
+bundles in an age-encrypted user vault and optional managed machine snapshot.
 
 MENTAL MODEL
 ------------
@@ -48,10 +48,16 @@ Keys within a secret use dot notation: "prod/myapp/mysql.password"
 STORAGE
 -------
 
-All secrets live in a single encrypted file:
+User secrets and optional machine-managed secrets use separate local files:
 
-    ~/.secrets/vault.age      # encrypted vault (safe to backup/commit)
-    ~/.secrets/identity.txt   # age private key (NEVER share/commit)
+    ~/.secrets/vault.age                # user encrypted vault
+    ~/.secrets/identity.txt             # user age private key (NEVER share/commit)
+    ~/.secrets/managed/vault.age        # optional managed encrypted snapshot
+    ~/.secrets/managed/identity.txt     # machine-local private key (NEVER share)
+
+Get/list/show/search/tags read both vaults without network access. User bundles
+win name collisions; list marks the managed bundle as shadowed. Bundle writes
+address only the user vault. A managed-only machine does not need clavis init.
 
 COMMANDS
 --------
@@ -84,6 +90,19 @@ Discovery:
     clavis show <name>                      Full details of one secret
     clavis search <pattern>                 Search names, tags, and values
     clavis search <pattern> --reveal        Show matching value context
+
+Managed snapshots:
+
+    clavis managed keygen                  Create/reuse machine identity; print public recipient
+    clavis export --recipient target.pub --names-file approved.names --out snapshot.age
+    clavis managed verify staged.age        Verify recipient and snapshot without installing
+    clavis managed install staged.age       Verify and atomically replace managed snapshot
+
+Export requires prior host-policy approval by the caller. It refuses missing or
+locked names. An empty names file withdraws all managed bundles on successful
+install. Export/verify/install print JSON count, names, and a keyed fingerprint;
+no secret values or private keys. Last-good local data survives failed delivery.
+See docs/managed-vaults.md for delivery, retry, revocation, and recovery details.
 
 Output Formats:
 
