@@ -7,10 +7,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/except-pass/clavis/internal/config"
 	"github.com/except-pass/clavis/internal/secret"
 	"github.com/except-pass/clavis/internal/vault"
+	"github.com/spf13/cobra"
 )
 
 var migrateFrom string
