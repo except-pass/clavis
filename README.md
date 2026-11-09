@@ -1,7 +1,8 @@
 # Clavis
 
 Encrypted secrets manager using [age](https://age-encryption.org/).  
-Clavis stores secrets as tagged key-value bundles in a single encrypted vault.
+Clavis stores secrets as tagged key-value bundles in a user vault, an optional
+machine-managed snapshot, or both, encrypted with age.
 
 ## Motivation
 
@@ -151,11 +152,8 @@ clavis manual          # full manual + workflow patterns
 
 ## Files
 
-```text
-~/.secrets/
-  vault.age       # encrypted vault
-  identity.txt    # age private key (NEVER share)
-```
+See [files and local reads](docs/managed-vaults.md#files-and-local-reads) for
+user-vault and managed-snapshot paths, identities, and storage behavior.
 
 ## Releasing
 
