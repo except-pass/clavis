@@ -15,8 +15,9 @@ var rootCmd = &cobra.Command{
 	Short: "Encrypted secrets manager",
 	Long: `Clavis manages secrets as tagged key-value bundles, encrypted with age.
 
-Secrets are stored in ~/.secrets/vault.age (encrypted, safe to backup).
-Identity key is ~/.secrets/identity.txt (never share).
+Secrets can come from a user vault, a managed machine snapshot, or both.
+Reads use local files without contacting a controller. Never share private keys.
+See docs/managed-vaults.md for storage paths and managed-only setup.
 
 Quick start:
   clavis list                     # see all secrets

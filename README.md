@@ -1,7 +1,8 @@
 # Clavis
 
 Encrypted secrets manager using [age](https://age-encryption.org/).  
-Clavis stores secrets as tagged key-value bundles in a single encrypted vault.
+Clavis stores secrets as tagged key-value bundles in a user vault, an optional
+machine-managed snapshot, or both, encrypted with age.
 
 ## Motivation
 
@@ -110,6 +111,37 @@ ones stay human-gated.
 > protected by the vault's age encryption; the lock stops routine `get`/`show` access,
 > not someone who can already decrypt the vault.
 
+## Per-machine managed snapshots
+
+A trusted publisher can export only approved bundles to a machine's own age
+recipient. The machine keeps its encrypted copy locally; ordinary `get`, `list`,
+`show`, `search`, and `tags` read it without contacting the publisher. User-owned
+bundles win name collisions. Write commands continue to affect only the user's
+own vault.
+
+```bash
+# On the target, as its normal Clavis account (prints only the public recipient)
+clavis managed keygen
+
+# On the publisher, after inventory/policy approval of the names
+clavis export --recipient /protected/path/target.pub \
+  --names-file /protected/path/approved.names --out /protected/path/snapshot.age
+
+# On the target, after trusted delivery of the ciphertext
+clavis managed verify /protected/path/staged.age
+clavis managed install /protected/path/staged.age
+clavis get example/service.key
+```
+
+Missing or locked names abort export. Install verifies the machine recipient and
+atomically replaces the complete snapshot, preserving last-good data on failure.
+An empty approved names file withdraws all managed bundles on the next successful
+install. Normal reads have no network dependency or freshness checks.
+
+See the [managed-vault operator runbook](docs/managed-vaults.md) for the JSON report
+contract, permissions, authorization boundary, retries, revocation, and controller
+backup/recovery. Managed identity files are machine-specific and never shared.
+
 ## Documentation
 
 ```bash
@@ -120,11 +152,8 @@ clavis manual          # full manual + workflow patterns
 
 ## Files
 
-```text
-~/.secrets/
-  vault.age       # encrypted vault
-  identity.txt    # age private key (NEVER share)
-```
+See [files and local reads](docs/managed-vaults.md#files-and-local-reads) for
+user-vault and managed-snapshot paths, identities, and storage behavior.
 
 ## Releasing
 

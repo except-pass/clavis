@@ -42,3 +42,8 @@ func IdentityPubPath() string {
 func FormattersPath() string {
 	return filepath.Join(SecretsDir(), FormattersDir)
 }
+
+// ManagedDir holds this machine's separate identity and managed snapshot.
+func ManagedDir() string {
+	return filepath.Join(SecretsDir(), "managed")
+}

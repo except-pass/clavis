@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/except-pass/clavis/internal/config"
-	"github.com/except-pass/clavis/internal/vault"
 )
 
 var showReveal bool
@@ -36,7 +34,7 @@ func init() {
 func runShow(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	v, err := vault.Load(config.VaultPath(), config.IdentityPath())
+	v, err := loadReadVault()
 	if err != nil {
 		return fmt.Errorf("loading vault: %w", err)
 	}

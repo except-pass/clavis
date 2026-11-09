@@ -4,7 +4,10 @@ Shared domain vocabulary for this project — entities, named processes, and sta
 
 ## Vault
 
-The single encrypted store holding all of a user's secrets. There is one vault per identity, encrypted at rest with an age keypair; reading anything from it requires the age identity.
+An age-encrypted store of secret bundles; reading it requires the corresponding
+age identity. Clavis supports a user vault and an optional machine-managed
+snapshot. See [files and local reads](docs/managed-vaults.md#files-and-local-reads)
+for storage and read behavior.
 
 ## Secret
 

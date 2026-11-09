@@ -5,10 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/spf13/cobra"
-	"github.com/except-pass/clavis/internal/config"
 	"github.com/except-pass/clavis/internal/tags"
-	"github.com/except-pass/clavis/internal/vault"
+	"github.com/spf13/cobra"
 )
 
 var listShowTags bool
@@ -35,7 +33,7 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	v, err := vault.Load(config.VaultPath(), config.IdentityPath())
+	v, shadowed, err := loadReadLayers()
 	if err != nil {
 		return fmt.Errorf("loading vault: %w", err)
 	}
@@ -62,6 +60,10 @@ func runList(cmd *cobra.Command, args []string) error {
 		var lockIndicator string
 		if s.Locked {
 			lockIndicator = " \U0001F512" // locked padlock
+		}
+
+		if shadowed[s.Name] {
+			lockIndicator += " [managed shadowed by user]"
 		}
 
 		if listVerbose {
